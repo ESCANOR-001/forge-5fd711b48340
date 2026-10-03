@@ -74,6 +74,7 @@ async function main() {
     await stage('Build Windows x64 EXE and ZIP', 'pnpm package:win');
   } else if (target === 'win32-arm64') {
     assert.equal(process.arch, 'arm64');
+    await stage('Windows executable header regressions', 'pnpm exec vitest run scripts/cua-windows-background.test.mjs');
     await stage('Build Windows ARM64 EXE and ZIP', 'pnpm package:prepare && pnpm build:cua:win && pnpm exec electron-builder --win nsis:arm64 zip:arm64 --publish never \'-c.nsis.artifactName=GlinkBot-${version}-arm64-setup.${ext}\'');
     await stage('Windows ARM64 native host smoke', '\"$GITHUB_WORKSPACE/source/release/win-arm64-unpacked/GlinkBot.exe\" scripts/smoke-cua-win-embedded.mjs', { ELECTRON_RUN_AS_NODE: '1', GLINKBOT_CUA_SMOKE_RESOURCES: resources, GLINKBOT_CUA_SMOKE_ARCH: 'arm64' });
   } else {
