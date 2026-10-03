@@ -42,10 +42,16 @@ test('ARM checkout restricts a dedicated key directory before handling secrets',
   const workflow = readFileSync(new URL('../.github/workflows/desktop.yml', import.meta.url), 'utf8');
   const script = readFileSync(new URL('./prepare-source-auth.ps1', import.meta.url), 'utf8');
   assert(workflow.includes("if: matrix.target == 'win32-arm64'"));
-  assert(workflow.includes("format('{0}/glinkbot-source-auth', runner.temp)"));
+  assert(workflow.includes('run: node automation/ci/checkout-arm.mjs'));
   assert(workflow.indexOf('run: ./automation/ci/prepare-source-auth.ps1') < workflow.indexOf('repository: ${{ needs.prerequisites.outputs.source_repository }}'));
   assert(script.includes('SetAccessRuleProtection($true, $false)'));
   assert(script.includes('$entry.IdentityReference.Value -ne $owner.Value'));
   assert(!script.includes('SOURCE_DEPLOY_KEY'));
   assert(!script.includes('-Recurse'));
+  const checkout = readFileSync(new URL('./checkout-arm.mjs', import.meta.url), 'utf8');
+  assert(checkout.includes('StrictHostKeyChecking=yes'));
+  assert(checkout.includes("stdio: ['ignore', fd, fd]"));
+  assert(checkout.includes('rmSync(file, { force: true })'));
+  assert(checkout.includes("https://api.github.com/meta"));
+  assert(!checkout.includes('StrictHostKeyChecking=no'));
 });

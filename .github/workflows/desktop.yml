@@ -116,15 +116,19 @@ jobs:
         shell: pwsh
         run: ./automation/ci/prepare-source-auth.ps1
       - name: Read private source (no persisted credentials)
+        if: matrix.target != 'win32-arm64'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        env:
-          RUNNER_TEMP: ${{ matrix.target == 'win32-arm64' && format('{0}/glinkbot-source-auth', runner.temp) || runner.temp }}
         with:
           repository: ${{ needs.prerequisites.outputs.source_repository }}
           ref: ${{ needs.prerequisites.outputs.source_commit }}
           ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
           persist-credentials: false
           path: source
+      - name: Read private source with restricted ARM64 key
+        if: matrix.target == 'win32-arm64'
+        env:
+          SOURCE_DEPLOY_KEY: ${{ secrets.SOURCE_DEPLOY_KEY }}
+        run: node automation/ci/checkout-arm.mjs
       - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
         with:
           version: 10.33.0
