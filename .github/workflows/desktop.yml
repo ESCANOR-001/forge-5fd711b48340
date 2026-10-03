@@ -1,0 +1,143 @@
+name: Desktop packages to Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Build all targets or retry only a failed target
+        type: choice
+        default: all
+        options: [all, linux-x64, darwin-x64, darwin-arm64, win32-x64, win32-arm64]
+
+permissions:
+  contents: read
+
+# Serialize releases so an all-target run and a retry never overlap.
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  prerequisites:
+    if: github.repository == 'ESCANOR-001/forge-5fd711b48340' && github.actor == 'ESCANOR-001' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.release.outputs.matrix }}
+      source_commit: ${{ steps.release.outputs.source_commit }}
+      source_repository: ${{ steps.release.outputs.source_repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: automation
+          persist-credentials: false
+      - name: Require credentials before scheduling builds
+        env:
+          SOURCE_DEPLOY_KEY: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          test -n "$SOURCE_DEPLOY_KEY" || { echo 'Missing source read-only key'; exit 1; }
+          test -n "$R2_ACCESS_KEY_ID" || { echo 'Missing R2_ACCESS_KEY_ID'; exit 1; }
+          test -n "$R2_SECRET_ACCESS_KEY" || { echo 'Missing R2_SECRET_ACCESS_KEY'; exit 1; }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Select reviewed source and targets
+        id: release
+        env:
+          REQUESTED_TARGET: ${{ inputs.target }}
+        run: |
+          node --input-type=module - <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const release = JSON.parse(readFileSync('automation/release.json', 'utf8'));
+          assert.equal(release.repository, 'ESCANOR-001/glinkbot');
+          assert.match(release.commit, /^[a-f0-9]{40}$/);
+          assert.match(release.version, /^\d+\.\d+\.\d+$/);
+          const targets = [
+            { os: 'ubuntu-24.04', target: 'linux-x64' },
+            { os: 'macos-15-intel', target: 'darwin-x64' },
+            { os: 'macos-15', target: 'darwin-arm64' },
+            { os: 'windows-2025', target: 'win32-x64' },
+            { os: 'windows-11-arm', target: 'win32-arm64' },
+          ];
+          const include = targets.filter(x => process.env.REQUESTED_TARGET === 'all' || x.target === process.env.REQUESTED_TARGET);
+          assert(include.length > 0);
+          appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({include})}\nsource_commit=${release.commit}\nsource_repository=${release.repository}\n`);
+          console.log(`Validated release ${release.version}: ${include.length} target(s)`);
+          JS
+      - name: Read private source (no persisted credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ steps.release.outputs.source_repository }}
+          ref: ${{ steps.release.outputs.source_commit }}
+          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          persist-credentials: false
+          path: source
+      - name: Verify R2 access with private output
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: node automation/ci/run.mjs prerequisites
+      - name: Retain encrypted diagnostics only
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: encrypted-prerequisites-${{ github.run_attempt }}
+          path: diagnostics/*.sealed.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+  build:
+    needs: prerequisites
+    if: github.repository == 'ESCANOR-001/forge-5fd711b48340' && github.actor == 'ESCANOR-001' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prerequisites.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: automation
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Read private source (no persisted credentials)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prerequisites.outputs.source_repository }}
+          ref: ${{ needs.prerequisites.outputs.source_commit }}
+          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          persist-credentials: false
+          path: source
+      - uses: pnpm/action-setup@ff378ebe6b225b0680b81c1ad4498ae0d1d3a5e3 # v6.0.10
+        with:
+          version: 10.33.0
+          run_install: false
+      - name: Build and validate with private output
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+        run: node automation/ci/run.mjs build
+      - name: Publish verified installers to R2
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: node automation/ci/run.mjs publish
+      - name: Retain encrypted diagnostics only
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: encrypted-${{ matrix.target }}-${{ github.run_attempt }}
+          path: diagnostics/*.sealed.json
+          if-no-files-found: ignore
+          retention-days: 3

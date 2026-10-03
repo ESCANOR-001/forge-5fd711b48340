@@ -1,0 +1,8 @@
+/source/
+/diagnostics/
+/node_modules/
+*.log
+*.key
+*.p12
+*.env
+
