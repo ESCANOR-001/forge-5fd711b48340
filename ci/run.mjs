@@ -60,6 +60,18 @@ async function main() {
   const spec = targets[target];
   const resources = path.join(source, spec.resources);
   if (process.argv[2] === 'build') {
+  if (process.platform === 'linux') {
+    await stage('Image verification tools', '/home/linuxbrew/.linuxbrew/bin/brew install imagemagick', { HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1' });
+    baseEnv.PATH = `/home/linuxbrew/.linuxbrew/bin:${baseEnv.PATH}`;
+  } else if (process.platform === 'darwin') {
+    await stage('Image verification tools', 'brew install imagemagick', { HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1' });
+  } else if (target === 'win32-arm64') {
+    await stage('Image verification tools', 'pwsh -NoProfile -File "$GITHUB_WORKSPACE/automation/ci/prepare-image-tools.ps1"');
+    const currentPath = Object.keys(baseEnv).find(key => key.toLowerCase() === 'path');
+    const oldPath = baseEnv[currentPath];
+    delete baseEnv[currentPath];
+    baseEnv.PATH = `${path.join(process.env.RUNNER_TEMP, 'image-verification-tools')};${oldPath}`;
+  }
   await stage('Install pinned dependencies', 'pnpm install --frozen-lockfile');
   await stage('Distribution policy and Electron checks', 'pnpm test:distribution && pnpm check:electron');
   await stage('Publisher dependencies and tests', 'npm ci --prefix tools/desktop-release --ignore-scripts --no-audit --no-fund && node --test tools/desktop-release/publish.test.mjs');
