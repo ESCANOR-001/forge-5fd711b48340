@@ -18,7 +18,7 @@ const targets = {
   'win32-x64': { os: 'windows-2025', arch: 'x64', resources: 'release/win-unpacked/resources' },
   'win32-arm64': { os: 'windows-11-arm', arch: 'arm64', resources: 'release/win-arm64-unpacked/resources' },
 };
-const baseEnv = { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', CI: 'true' };
+const baseEnv = { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', CI: 'true', NODE_OPTIONS: '--max-old-space-size=4096' };
 // Children cannot accidentally write to public workflow command/summary channels.
 for (const name of ['GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH', 'GITHUB_STEP_SUMMARY', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'SOURCE_DEPLOY_KEY', 'GH_TOKEN', 'GITHUB_TOKEN']) delete baseEnv[name];
 const r2Env = () => ({ R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY });
