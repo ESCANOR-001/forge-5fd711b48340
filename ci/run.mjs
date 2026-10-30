@@ -82,6 +82,7 @@ async function main() {
     await stage('Install and test on disposable Linux runner', 'sudo chmod 0755 /opt && sudo apt-get install -y ./release/GlinkBot-*-amd64.deb && node scripts/smoke-browser-bundle.mjs --resources /opt/GlinkBot/resources');
     await stage('Installed Linux server smoke', 'node scripts/smoke-packaged-server.mjs --browser-bundle /opt/GlinkBot/resources/browser-engine', { OMB_SMOKE_DIST: '/opt/GlinkBot/resources/server' });
     await stage('Linux desktop startup and cleanup smoke', 'sudo chown root:root release/linux-unpacked/chrome-sandbox && sudo chmod 4755 release/linux-unpacked/chrome-sandbox && pnpm smoke:linux-package', { OMB_SMOKE_INSTALLED_DEB: '1' });
+    await stage('Electron regression suite', 'pnpm test:electron');
   } else if (target === 'win32-x64') {
     await stage('Build Windows x64 EXE and ZIP', 'pnpm package:win');
   } else if (target === 'win32-arm64') {
@@ -96,6 +97,10 @@ async function main() {
     await stage('Packaged browser smoke', 'node scripts/smoke-browser-bundle.mjs --resources "$PACKAGE_RESOURCES"', { PACKAGE_RESOURCES: resources });
     await stage('Packaged server smoke', 'node scripts/smoke-packaged-server.mjs --browser-bundle "$PACKAGE_RESOURCES/browser-engine"', { PACKAGE_RESOURCES: resources, OMB_SMOKE_DIST: path.join(resources, 'server') });
   }
+  const executable = target.startsWith('darwin-')
+    ? path.join(resources, '..', 'MacOS', 'GlinkBot')
+    : path.join(resources, '..', target.startsWith('win32-') ? 'GlinkBot.exe' : 'glinkbot');
+  await stage('Packaged runtime security versions', '"$PACKAGE_EXECUTABLE" scripts/check-desktop-runtime-security.mjs', { PACKAGE_EXECUTABLE: executable, ELECTRON_RUN_AS_NODE: '1' });
   await stage('Packaged updater policy', 'node scripts/check-packaged-update-target.mjs "$PACKAGE_RESOURCES/app-update.yml"', { PACKAGE_RESOURCES: resources });
     return;
   }
