@@ -90,7 +90,7 @@ async function main() {
     await stage('Build Windows ARM64 EXE and ZIP', 'pnpm package:prepare && pnpm build:cua:win && pnpm exec electron-builder --win nsis:arm64 zip:arm64 --publish never \'-c.nsis.artifactName=GlinkBot-${version}-arm64-setup.${ext}\'');
     await stage('Windows ARM64 native host smoke', '\"$GITHUB_WORKSPACE/source/release/win-arm64-unpacked/GlinkBot.exe\" scripts/smoke-cua-win-embedded.mjs', { ELECTRON_RUN_AS_NODE: '1', GLINKBOT_CUA_SMOKE_RESOURCES: resources, GLINKBOT_CUA_SMOKE_ARCH: 'arm64' });
   } else {
-    await stage('Build macOS DMG and ZIP (ad-hoc)', `pnpm package:prepare && pnpm build:speech && pnpm build:cua && pnpm exec electron-builder --mac --${spec.arch} --publish never -c.mac.identity=- -c.dmg.sign=false`, { GLINKBOT_CUA_ARCHES: spec.arch, GLINKBOT_CUA_ARCHES_PARTIAL: '1' });
+    await stage('Build macOS DMG and ZIP (ad-hoc)', `pnpm package:prepare && pnpm build:speech && pnpm build:cua && pnpm exec electron-builder --mac dmg:${spec.arch} zip:${spec.arch} --publish never -c.mac.identity=- -c.dmg.sign=false`, { GLINKBOT_CUA_ARCHES: spec.arch, GLINKBOT_CUA_ARCHES_PARTIAL: '1' });
   }
   if (target !== 'linux-x64') {
     await stage('Packaged browser smoke', 'node scripts/smoke-browser-bundle.mjs --resources "$PACKAGE_RESOURCES"', { PACKAGE_RESOURCES: resources });
